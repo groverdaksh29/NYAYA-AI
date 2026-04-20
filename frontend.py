@@ -1,155 +1,210 @@
 import streamlit as st
-from backend import analyze_scenario
-import re
+from backend import chat_with_ai, SYSTEM_PROMPT
+import re, html
 
-# 🔥 CLEAN FUNCTION (removes ANY HTML)
+# ---------- CLEAN ----------
 def clean_text(text):
     if not text:
         return ""
-    return re.sub(r"<.*?>", "", str(text)).strip()
+    text = re.sub(r"<.*?>", "", str(text))
+    text = html.unescape(text)
+    return text.strip()
 
+# ---------- PAGE ----------
+st.set_page_config(page_title="NyayaAI", layout="centered")
 
-st.set_page_config(
-    page_title="NyayaAI – Indian Legal Assistant",
-    page_icon="⚖️",
-    layout="centered",
-)
-
-# 🎨 STYLES
+# ---------- PREMIUM CSS ----------
 st.markdown("""
 <style>
-html, body { font-family: 'DM Sans', sans-serif; }
-.stApp { background: linear-gradient(135deg, #0F1B3D 0%, #1A2D5A 50%, #0F1B3D 100%); }
 
-.card { background:rgba(255,255,255,0.04); border:1px solid rgba(212,160,23,0.2); border-radius:18px; padding:22px 26px; margin-bottom:20px; }
+/* 🌌 Background */
+.stApp {
+    background: radial-gradient(circle at top, #0f172a 0%, #020617 100%);
+}
 
-.article-box { background:rgba(255,255,255,0.05); border-left:3px solid #D4A017; border-radius:10px; padding:14px 16px; margin-bottom:12px; }
-.article-num { font-weight:800; color:#F0C040; }
-.article-title { font-weight:600; color:#FDF6E3; }
-.article-summary { font-size:0.9rem; color:rgba(253,246,227,0.7); }
-.article-rel { font-size:0.85rem; color:#FF8C42; }
+/* Container */
+.block-container {
+    max-width: 820px;
+    padding-top: 2rem;
+}
 
-.law-box { background:rgba(255,255,255,0.04); border-left:3px solid #FF6B1A; border-radius:10px; padding:12px 16px; margin-bottom:10px; }
+/* Title */
+.title {
+    text-align: center;
+    font-size: 3rem;
+    font-weight: 700;
+    background: linear-gradient(90deg, #facc15, #fbbf24);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
 
-.action-item { background:rgba(255,255,255,0.04); border-radius:10px; padding:12px; margin-bottom:8px; }
+.subtitle {
+    text-align: center;
+    color: #94a3b8;
+    margin-bottom: 25px;
+}
+
+/* Glass effect */
+.glass {
+    background: rgba(255,255,255,0.03);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 14px 18px;
+    margin: 12px 0;
+}
+
+/* 👤 User bubble */
+.user {
+    background: linear-gradient(135deg, #1e293b, #0f172a);
+    border-radius: 14px;
+    padding: 12px 16px;
+    margin: 10px 0;
+    color: #e2e8f0;
+    text-align: right;
+}
+
+/* 🤖 AI bubble */
+.bot {
+    background: rgba(255,255,255,0.04);
+    border-left: 3px solid #facc15;
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin: 10px 0;
+    color: #e2e8f0;
+    box-shadow: 0 0 20px rgba(250,204,21,0.05);
+}
+
+/* Section titles */
+.section-title {
+    margin-top: 12px;
+    font-weight: 600;
+    color: #facc15;
+}
+
+/* Buttons */
+.stButton>button {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    color: #e2e8f0;
+    transition: all 0.2s ease;
+}
+
+.stButton>button:hover {
+    border: 1px solid #facc15;
+    color: #facc15;
+    transform: translateY(-1px);
+}
+
+/* Input */
+.stChatInput {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60%;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("## ⚖️ NyayaAI")
+# ---------- HEADER ----------
+st.markdown('<div class="title">⚖️ NyayaAI</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Your Personal Legal Breakdown Assistant</div>', unsafe_allow_html=True)
 
-api_key = st.text_input("Enter Groq API Key", type="password")
-scenario = st.text_area("Describe your legal scenario")
+# ---------- QUICK ACTIONS ----------
+col1, col2, col3 = st.columns(3)
 
-if st.button("Analyze"):
-    if not api_key or not scenario:
-        st.warning("Enter API key and scenario")
+with col1:
+    if st.button("🏠 Landlord"):
+        st.session_state.prefill = "My landlord is trying to evict me before lease ends"
+
+with col2:
+    if st.button("💼 Job Issue"):
+        st.session_state.prefill = "My employer hasn't paid my salary for 2 months"
+
+with col3:
+    if st.button("👮 Police"):
+        st.session_state.prefill = "Can police check my phone without permission?"
+
+st.markdown("---")
+
+# ---------- MEMORY ----------
+if "messages" not in st.session_state:
+    st.session_state.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+if "display" not in st.session_state:
+    st.session_state.display = []
+
+# ---------- FIRST MESSAGE ----------
+if len(st.session_state.display) == 0:
+    st.session_state.display.append({
+        "role": "assistant",
+        "content": {
+            "type": "chat",
+            "message": "Alright, what’s going on? Tell me the situation — I’ll break it down for you."
+        }
+    })
+
+# ---------- CHAT ----------
+for msg in st.session_state.display:
+
+    if msg["role"] == "user":
+        st.markdown(f'<div class="user">{msg["content"]}</div>', unsafe_allow_html=True)
+
     else:
-        data = analyze_scenario(api_key, scenario)
+        data = msg["content"]
 
-        # 🔥 BASIC CLEAN
-        data["riskTitle"] = clean_text(data.get("riskTitle"))
-        data["riskExplanation"] = clean_text(data.get("riskExplanation"))
-        data["explanation"] = clean_text(data.get("explanation"))
+        if data.get("type") == "chat":
+            st.markdown(f'<div class="bot">{clean_text(data.get("message"))}</div>', unsafe_allow_html=True)
 
-        # 🔥 FORCE SAFE STRUCTURE
-        articles = data.get("articles", [])
-        if not isinstance(articles, list):
-            articles = []
+        else:
+            st.markdown(f'<div class="bot"><b>⚠️ {clean_text(data.get("riskTitle"))}</b><br>{clean_text(data.get("riskExplanation"))}</div>', unsafe_allow_html=True)
 
-        laws = data.get("laws", [])
-        if not isinstance(laws, list):
-            laws = []
+            st.markdown('<div class="section-title">📖 Explanation</div>', unsafe_allow_html=True)
+            st.write(clean_text(data.get("explanation")))
 
-        steps = data.get("actionSteps", [])
-        if not isinstance(steps, list):
-            steps = []
+            if data.get("articles"):
+                st.markdown('<div class="section-title">📜 Articles</div>', unsafe_allow_html=True)
+                for a in data.get("articles", []):
+                    if isinstance(a, dict):
+                        st.write(f"- {clean_text(a.get('number'))}: {clean_text(a.get('title'))}")
+                    else:
+                        st.write(f"- {clean_text(a)}")
 
-        # ⚠️ RISK
-        st.markdown(f"""
-        <div class="card">
-        <h3>⚠️ {data['riskTitle']}</h3>
-        <p>{data['riskExplanation']}</p>
-        </div>
-        """, unsafe_allow_html=True)
+            if data.get("laws"):
+                st.markdown('<div class="section-title">⚖️ Laws</div>', unsafe_allow_html=True)
+                for l in data.get("laws", []):
+                    if isinstance(l, dict):
+                        st.write(f"- {clean_text(l.get('name'))}")
+                    else:
+                        st.write(f"- {clean_text(l)}")
 
-        # 📖 EXPLANATION
-        st.markdown(f"""
-        <div class="card">
-        <h4>📖 Explanation</h4>
-        <p>{data['explanation']}</p>
-        </div>
-        """, unsafe_allow_html=True)
+            st.markdown('<div class="section-title">🧭 What you should do</div>', unsafe_allow_html=True)
+            for step in data.get("actionSteps", []):
+                st.write(f"- {clean_text(step)}")
 
-        # 📜 ARTICLES (SAFE RENDER)
-        articles_html = ""
+# ---------- INPUT ----------
+user_input = st.chat_input("Describe your legal situation...")
 
-        for a in articles:
-            if not isinstance(a, dict):
-                continue
+if "prefill" in st.session_state:
+    user_input = st.session_state.pop("prefill")
 
-            number = clean_text(a.get("number"))
-            title = clean_text(a.get("title"))
-            summary = clean_text(a.get("summary"))
-            relevance = clean_text(a.get("relevance"))
+if user_input:
 
-            articles_html += f"""
-            <div class="article-box">
-                <div class="article-num">{number}</div>
-                <div class="article-title">{title}</div>
-                <div class="article-summary">{summary}</div>
-                <div class="article-rel">{relevance}</div>
-            </div>
-            """
+    st.session_state.messages.append({"role": "user", "content": user_input})
+    st.session_state.display.append({"role": "user", "content": user_input})
 
-        if articles_html:
-            st.markdown(f"""
-            <div class="card">
-            <h4>📜 Articles</h4>
-            {articles_html}
-            </div>
-            """, unsafe_allow_html=True)
+    with st.spinner("Thinking like a lawyer..."):
+        response = chat_with_ai(st.session_state.messages)
 
-        # ⚖️ LAWS
-        laws_html = ""
+    if response.get("type") == "chat":
+        memory_text = response.get("message", "")
+    else:
+        memory_text = response.get("explanation", "")
 
-        for l in laws:
-            if not isinstance(l, dict):
-                continue
+    st.session_state.messages.append({"role": "assistant", "content": memory_text})
+    st.session_state.display.append({"role": "assistant", "content": response})
 
-            name = clean_text(l.get("name"))
-            section = clean_text(l.get("section"))
-            relevance = clean_text(l.get("relevance"))
-
-            laws_html += f"""
-            <div class="law-box">
-                <b>{name}</b><br>
-                {section}<br>
-                {relevance}
-            </div>
-            """
-
-        if laws_html:
-            st.markdown(f"""
-            <div class="card">
-            <h4>⚖️ Laws</h4>
-            {laws_html}
-            </div>
-            """, unsafe_allow_html=True)
-
-        # 🧭 ACTION STEPS
-        steps_html = ""
-
-        for i, step in enumerate(steps, 1):
-            steps_html += f"""
-            <div class="action-item">
-                {i}. {clean_text(step)}
-            </div>
-            """
-
-        if steps_html:
-            st.markdown(f"""
-            <div class="card">
-            <h4>🧭 Action Steps</h4>
-            {steps_html}
-            </div>
-            """, unsafe_allow_html=True)
+    st.rerun()
