@@ -1,8 +1,9 @@
 import streamlit as st
 from backend import chat_with_ai, SYSTEM_PROMPT
-import re, html
+import re, html, json, os
+from datetime import datetime
 
-# ---------- CLEAN ----------
+# ── Helpers ───────────────────────────────────────────────────────────────────
 def clean_text(text):
     if not text:
         return ""
@@ -10,201 +11,641 @@ def clean_text(text):
     text = html.unescape(text)
     return text.strip()
 
-# ---------- PAGE ----------
-st.set_page_config(page_title="NyayaAI", layout="centered")
+HISTORY_FILE = "chat_history.json"
 
-# ---------- PREMIUM CSS ----------
-st.markdown("""
-<style>
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r") as f:
+            return json.load(f)
+    return {}
 
-/* 🌌 Background */
-.stApp {
-    background: radial-gradient(circle at top, #0f172a 0%, #020617 100%);
-}
+def save_history(history):
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(history, f, indent=2)
 
-/* Container */
-.block-container {
-    max-width: 820px;
-    padding-top: 2rem;
-}
+def save_current_chat():
+    if not st.session_state.display or len(st.session_state.display) <= 1:
+        return
+    history = load_history()
+    chat_id = st.session_state.get("chat_id")
+    title = st.session_state.get("chat_title", "Untitled")
+    history[chat_id] = {
+        "title": title,
+        "timestamp": st.session_state.get("chat_timestamp", ""),
+        "messages": st.session_state.messages,
+        "display": st.session_state.display,
+    }
+    save_history(history)
 
-/* Title */
-.title {
-    text-align: center;
-    font-size: 3rem;
-    font-weight: 700;
-    background: linear-gradient(90deg, #facc15, #fbbf24);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}
+def start_new_chat():
+    save_current_chat()
+    st.session_state.chat_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    st.session_state.chat_timestamp = datetime.now().strftime("%d %b %Y, %I:%M %p")
+    st.session_state.chat_title = "New Consultation"
+    st.session_state.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    st.session_state.display = []
 
-.subtitle {
-    text-align: center;
-    color: #94a3b8;
-    margin-bottom: 25px;
-}
+def load_chat(chat_id):
+    save_current_chat()
+    history = load_history()
+    if chat_id in history:
+        chat = history[chat_id]
+        st.session_state.chat_id = chat_id
+        st.session_state.chat_title = chat.get("title", "Consultation")
+        st.session_state.chat_timestamp = chat.get("timestamp", "")
+        st.session_state.messages = chat.get("messages", [{"role": "system", "content": SYSTEM_PROMPT}])
+        st.session_state.display = chat.get("display", [])
 
-/* Glass effect */
-.glass {
-    background: rgba(255,255,255,0.03);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 14px;
-    padding: 14px 18px;
-    margin: 12px 0;
-}
+def delete_chat(chat_id):
+    history = load_history()
+    if chat_id in history:
+        del history[chat_id]
+        save_history(history)
 
-/* 👤 User bubble */
-.user {
-    background: linear-gradient(135deg, #1e293b, #0f172a);
-    border-radius: 14px;
-    padding: 12px 16px;
-    margin: 10px 0;
-    color: #e2e8f0;
-    text-align: right;
-}
+# ── Init session ──────────────────────────────────────────────────────────────
+if "chat_id" not in st.session_state:
+    st.session_state.chat_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    st.session_state.chat_timestamp = datetime.now().strftime("%d %b %Y, %I:%M %p")
+    st.session_state.chat_title = "New Consultation"
 
-/* 🤖 AI bubble */
-.bot {
-    background: rgba(255,255,255,0.04);
-    border-left: 3px solid #facc15;
-    border-radius: 14px;
-    padding: 14px 16px;
-    margin: 10px 0;
-    color: #e2e8f0;
-    box-shadow: 0 0 20px rgba(250,204,21,0.05);
-}
-
-/* Section titles */
-.section-title {
-    margin-top: 12px;
-    font-weight: 600;
-    color: #facc15;
-}
-
-/* Buttons */
-.stButton>button {
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 12px;
-    color: #e2e8f0;
-    transition: all 0.2s ease;
-}
-
-.stButton>button:hover {
-    border: 1px solid #facc15;
-    color: #facc15;
-    transform: translateY(-1px);
-}
-
-/* Input */
-.stChatInput {
-    position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 60%;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-# ---------- HEADER ----------
-st.markdown('<div class="title">⚖️ NyayaAI</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Your Personal Legal Breakdown Assistant</div>', unsafe_allow_html=True)
-
-# ---------- QUICK ACTIONS ----------
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    if st.button("🏠 Landlord"):
-        st.session_state.prefill = "My landlord is trying to evict me before lease ends"
-
-with col2:
-    if st.button("💼 Job Issue"):
-        st.session_state.prefill = "My employer hasn't paid my salary for 2 months"
-
-with col3:
-    if st.button("👮 Police"):
-        st.session_state.prefill = "Can police check my phone without permission?"
-
-st.markdown("---")
-
-# ---------- MEMORY ----------
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
 if "display" not in st.session_state:
     st.session_state.display = []
 
-# ---------- FIRST MESSAGE ----------
 if len(st.session_state.display) == 0:
     st.session_state.display.append({
         "role": "assistant",
         "content": {
             "type": "chat",
-            "message": "Alright, what’s going on? Tell me the situation — I’ll break it down for you."
+            "message": "Alright — what's the situation? Give me the full picture and I'll tell you exactly where you stand legally."
         }
     })
 
-# ---------- CHAT ----------
+# ── Page config ───────────────────────────────────────────────────────────────
+st.set_page_config(page_title="NyayaAI", page_icon="⚖️", layout="wide")
+
+# ── CSS ───────────────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
+#MainMenu, footer, header { visibility: hidden; }
+
+/* ── BACKGROUND ── */
+.stApp {
+    background-color: #070608;
+    background-image:
+        radial-gradient(ellipse at 15% 15%, rgba(180,134,20,0.09) 0%, transparent 50%),
+        radial-gradient(ellipse at 85% 85%, rgba(139,90,20,0.07) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 50%, rgba(100,60,10,0.04) 0%, transparent 70%);
+}
+
+/* Ashoka Chakra watermark */
+.stApp::before {
+    content: '☸';
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 65vw;
+    color: rgba(180,134,20,0.018);
+    pointer-events: none;
+    z-index: 0;
+    line-height: 1;
+}
+
+/* ── LAYOUT ── */
+section[data-testid="stSidebar"] {
+    background: #0c0b09 !important;
+    border-right: 1px solid rgba(184,134,11,0.12) !important;
+    min-width: 280px !important;
+    max-width: 280px !important;
+}
+
+.block-container {
+    padding: 0 2rem 7rem !important;
+    max-width: 100% !important;
+    position: relative;
+    z-index: 1;
+}
+
+/* ── SIDEBAR ── */
+.sidebar-logo {
+    text-align: center;
+    padding: 28px 16px 24px;
+    border-bottom: 1px solid rgba(184,134,11,0.12);
+    margin-bottom: 8px;
+}
+
+.sidebar-logo-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.7rem;
+    font-weight: 700;
+    color: #d4a017;
+    letter-spacing: 2px;
+}
+
+.sidebar-logo-sub {
+    font-size: 0.62rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.2);
+    margin-top: 4px;
+}
+
+.tricolor {
+    display: flex;
+    width: 60px;
+    height: 2px;
+    margin: 10px auto 0;
+    border-radius: 2px;
+    overflow: hidden;
+}
+.tc-s { flex:1; background:#FF6B1A; }
+.tc-w { flex:1; background:#f5f0e8; }
+.tc-g { flex:1; background:#138808; }
+
+.sidebar-section-label {
+    font-size: 0.62rem;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: rgba(184,134,11,0.5);
+    padding: 16px 16px 8px;
+    font-weight: 600;
+}
+
+.history-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    border-radius: 8px;
+    margin: 2px 8px;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+}
+.history-item:hover {
+    background: rgba(184,134,11,0.07);
+    border-color: rgba(184,134,11,0.15);
+}
+.history-item-title {
+    font-size: 0.83rem;
+    color: #c8b89a;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.history-item-time {
+    font-size: 0.68rem;
+    color: rgba(255,255,255,0.2);
+    margin-top: 2px;
+}
+
+.no-history {
+    font-size: 0.8rem;
+    color: rgba(255,255,255,0.15);
+    text-align: center;
+    padding: 24px 16px;
+    font-style: italic;
+}
+
+/* ── SIDEBAR BUTTONS ── */
+.stButton > button {
+    background: rgba(184,134,11,0.07) !important;
+    border: 1px solid rgba(184,134,11,0.2) !important;
+    border-radius: 8px !important;
+    color: rgba(212,160,23,0.9) !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-size: 0.82rem !important;
+    font-weight: 500 !important;
+    transition: all 0.2s ease !important;
+    width: 100% !important;
+}
+.stButton > button:hover {
+    background: rgba(184,134,11,0.14) !important;
+    border-color: rgba(184,134,11,0.45) !important;
+    color: #d4a017 !important;
+    transform: translateY(-1px) !important;
+}
+
+/* ── MAIN HEADER ── */
+.nyaya-header {
+    text-align: center;
+    padding: 32px 0 24px;
+    position: relative;
+    margin-bottom: 8px;
+}
+
+.nyaya-header::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 200px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(184,134,11,0.3), transparent);
+}
+
+.nyaya-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 2.6rem;
+    font-weight: 700;
+    color: #d4a017;
+    letter-spacing: 3px;
+    text-shadow: 0 0 40px rgba(212,160,23,0.25);
+    line-height: 1;
+}
+
+.nyaya-subtitle {
+    font-size: 0.68rem;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.22);
+    margin-top: 7px;
+}
+
+.header-tricolor {
+    display: flex;
+    width: 100px;
+    height: 2px;
+    margin: 12px auto 0;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+/* ── DECORATIVE ELEMENTS ── */
+.legal-ornament {
+    text-align: center;
+    font-size: 0.75rem;
+    color: rgba(184,134,11,0.2);
+    letter-spacing: 8px;
+    margin: 4px 0 16px;
+    font-family: 'Cormorant Garamond', serif;
+}
+
+/* ── CHAT MESSAGES ── */
+.user-bubble {
+    display: flex;
+    justify-content: flex-end;
+    margin: 12px 0;
+}
+.user-bubble-inner {
+    background: linear-gradient(135deg, #1a1710, #12100a);
+    border: 1px solid rgba(184,134,11,0.18);
+    border-radius: 16px 16px 3px 16px;
+    padding: 12px 18px;
+    max-width: 75%;
+    color: #e8dcc8;
+    font-size: 0.91rem;
+    line-height: 1.65;
+}
+
+.bot-bubble {
+    display: flex;
+    justify-content: flex-start;
+    margin: 12px 0;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+.bot-avatar {
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, #b8860b, #8B6914);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+    margin-top: 2px;
+    box-shadow: 0 0 12px rgba(184,134,11,0.2);
+}
+
+.bot-bubble-inner {
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.055);
+    border-left: 2px solid #b8860b;
+    border-radius: 3px 16px 16px 16px;
+    padding: 14px 18px;
+    max-width: 85%;
+    color: #d4c9b0;
+    font-size: 0.91rem;
+    line-height: 1.7;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3), inset 0 0 40px rgba(184,134,11,0.02);
+}
+
+/* ── RISK BADGE ── */
+.risk-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 13px;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+}
+.risk-low  { background: rgba(47,133,90,0.13);  border: 1px solid rgba(47,133,90,0.35);  color: #68D391; }
+.risk-grey { background: rgba(214,158,46,0.13); border: 1px solid rgba(214,158,46,0.35); color: #F6E05E; }
+.risk-high { background: rgba(229,62,62,0.13);  border: 1px solid rgba(229,62,62,0.35);  color: #FC8181; }
+
+/* ── ANALYSIS ── */
+.section-block {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+}
+.section-label {
+    font-size: 0.64rem;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: #b8860b;
+    margin-bottom: 9px;
+    font-weight: 600;
+}
+.explanation-text { color: #c8bda0; font-size: 0.91rem; line-height: 1.75; }
+
+.article-item {
+    background: rgba(184,134,11,0.04);
+    border-left: 2px solid rgba(184,134,11,0.35);
+    border-radius: 0 8px 8px 0;
+    padding: 9px 13px;
+    margin-bottom: 7px;
+}
+.article-num { font-size: 0.67rem; font-weight: 700; color: #b8860b; letter-spacing: 1px; text-transform: uppercase; }
+.article-title { font-weight: 600; color: #e8dcc8; font-size: 0.87rem; margin: 2px 0; }
+.article-relevance { font-size: 0.81rem; color: rgba(200,189,160,0.65); font-style: italic; }
+
+.law-item {
+    background: rgba(255,107,26,0.04);
+    border-left: 2px solid rgba(255,107,26,0.28);
+    border-radius: 0 8px 8px 0;
+    padding: 9px 13px;
+    margin-bottom: 7px;
+}
+.law-name { font-weight: 600; color: #e8dcc8; font-size: 0.87rem; }
+.law-section { font-size: 0.73rem; color: #FF8C42; margin: 2px 0; }
+.law-rel { font-size: 0.81rem; color: rgba(200,189,160,0.65); }
+
+.step-item {
+    display: flex;
+    gap: 11px;
+    align-items: flex-start;
+    padding: 9px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    color: #c8bda0;
+    font-size: 0.89rem;
+    line-height: 1.6;
+}
+.step-num {
+    min-width: 20px; height: 20px;
+    background: linear-gradient(135deg, #b8860b, #8B6914);
+    color: #0a0a0a; font-weight: 800; font-size: 0.65rem;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; margin-top: 2px;
+}
+
+.loophole-box {
+    background: rgba(138,43,226,0.06);
+    border: 1px solid rgba(138,43,226,0.18);
+    border-radius: 10px;
+    padding: 11px 15px;
+    margin-top: 4px;
+    font-size: 0.87rem;
+    color: #d8b4fe;
+    line-height: 1.65;
+}
+.loophole-label {
+    font-size: 0.65rem; letter-spacing: 2px; text-transform: uppercase;
+    color: rgba(216,180,254,0.55); margin-bottom: 5px; font-weight: 600;
+}
+.followup-text {
+    font-size: 0.87rem; color: rgba(184,134,11,0.75); font-style: italic;
+    margin-top: 12px; padding-top: 11px;
+    border-top: 1px solid rgba(184,134,11,0.1);
+}
+
+/* ── DIVIDER ── */
+.gold-divider {
+    border: none; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(184,134,11,0.18), transparent);
+    margin: 16px 0;
+}
+
+/* ── DROPDOWN EXAMPLE ── */
+.stSelectbox > div > div {
+    background: rgba(255,255,255,0.03) !important;
+    border: 1px solid rgba(184,134,11,0.2) !important;
+    border-radius: 10px !important;
+    color: #c8bda0 !important;
+}
+
+/* ── CHAT INPUT ── */
+.stChatInputContainer {
+    background: rgba(7,6,8,0.97) !important;
+    border-top: 1px solid rgba(184,134,11,0.12) !important;
+    padding: 12px 20px 16px !important;
+    backdrop-filter: blur(16px) !important;
+}
+.stChatInput textarea {
+    background: rgba(255,255,255,0.03) !important;
+    border: 1px solid rgba(184,134,11,0.22) !important;
+    border-radius: 10px !important;
+    color: #e8dcc8 !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-size: 0.91rem !important;
+}
+.stChatInput textarea:focus {
+    border-color: rgba(184,134,11,0.45) !important;
+    box-shadow: 0 0 0 2px rgba(184,134,11,0.07) !important;
+}
+
+/* ── DISCLAIMER ── */
+.disclaimer {
+    text-align: center; font-size: 0.68rem;
+    color: rgba(255,255,255,0.12); margin-top: 6px; letter-spacing: 0.5px;
+}
+
+/* ── SPINNER ── */
+.stSpinner > div { border-top-color: #b8860b !important; }
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(184,134,11,0.2); border-radius: 4px; }
+</style>
+""", unsafe_allow_html=True)
+
+# ── SIDEBAR ───────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("""
+    <div class="sidebar-logo">
+        <div style="font-size:1.8rem;margin-bottom:6px;">⚖️</div>
+        <div class="sidebar-logo-title">NyayaAI</div>
+        <div class="sidebar-logo-sub">Legal Consultations</div>
+        <div class="tricolor"><span class="tc-s"></span><span class="tc-w"></span><span class="tc-g"></span></div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if st.button("＋  New Consultation", key="new_chat"):
+        start_new_chat()
+        st.rerun()
+
+    st.markdown('<div class="sidebar-section-label">Recent Consultations</div>', unsafe_allow_html=True)
+
+    history = load_history()
+    sorted_history = sorted(history.items(), key=lambda x: x[1].get("timestamp", ""), reverse=True)
+
+    if not sorted_history:
+        st.markdown('<div class="no-history">No past consultations yet.</div>', unsafe_allow_html=True)
+    else:
+        for chat_id, chat_data in sorted_history:
+            title = chat_data.get("title", "Consultation")
+            timestamp = chat_data.get("timestamp", "")
+            is_active = chat_id == st.session_state.get("chat_id")
+
+            col_a, col_b = st.columns([5, 1])
+            with col_a:
+                label = f"{'▶ ' if is_active else ''}{title[:28]}{'…' if len(title) > 28 else ''}"
+                if st.button(label, key=f"load_{chat_id}"):
+                    load_chat(chat_id)
+                    st.rerun()
+            with col_b:
+                if st.button("✕", key=f"del_{chat_id}"):
+                    delete_chat(chat_id)
+                    if chat_id == st.session_state.get("chat_id"):
+                        start_new_chat()
+                    st.rerun()
+
+    st.markdown("---")
+    st.markdown('<div class="no-history" style="padding:8px 16px;">Educational purposes only.<br>Not legal advice.</div>', unsafe_allow_html=True)
+
+# ── MAIN AREA ─────────────────────────────────────────────────────────────────
+st.markdown("""
+<div class="nyaya-header">
+    <div class="nyaya-title">⚖ NyayaAI</div>
+    <div class="nyaya-subtitle">Indian Legal Reasoning & Rights Assistant</div>
+    <div class="header-tricolor" style="display:flex;width:100px;height:2px;margin:12px auto 0;border-radius:2px;overflow:hidden;">
+        <span style="flex:1;background:#FF6B1A;"></span>
+        <span style="flex:1;background:#f5f0e8;"></span>
+        <span style="flex:1;background:#138808;"></span>
+    </div>
+</div>
+<div class="legal-ornament">— SATYAMEVA JAYATE —</div>
+""", unsafe_allow_html=True)
+
+# ── CHAT MESSAGES ─────────────────────────────────────────────────────────────
 for msg in st.session_state.display:
-
     if msg["role"] == "user":
-        st.markdown(f'<div class="user">{msg["content"]}</div>', unsafe_allow_html=True)
-
+        st.markdown(f"""
+        <div class="user-bubble">
+            <div class="user-bubble-inner">{clean_text(msg["content"])}</div>
+        </div>
+        """, unsafe_allow_html=True)
     else:
         data = msg["content"]
-
         if data.get("type") == "chat":
-            st.markdown(f'<div class="bot">{clean_text(data.get("message"))}</div>', unsafe_allow_html=True)
-
+            st.markdown(f"""
+            <div class="bot-bubble">
+                <div class="bot-avatar">⚖</div>
+                <div class="bot-bubble-inner">{clean_text(data.get("message", ""))}</div>
+            </div>
+            """, unsafe_allow_html=True)
         else:
-            st.markdown(f'<div class="bot"><b>⚠️ {clean_text(data.get("riskTitle"))}</b><br>{clean_text(data.get("riskExplanation"))}</div>', unsafe_allow_html=True)
+            risk = data.get("riskLevel", "grey")
+            risk_emoji = {"low": "🟢", "grey": "🟡", "high": "🔴"}.get(risk, "⚪")
+            h = '<div class="bot-bubble"><div class="bot-avatar">⚖</div><div class="bot-bubble-inner">'
+            h += f'<div class="risk-badge risk-{risk}">{risk_emoji} {clean_text(data.get("riskTitle",""))}</div>'
+            h += f'<div class="explanation-text">{clean_text(data.get("riskExplanation",""))}</div>'
+            h += f'<div class="section-block"><div class="section-label">📖 Legal Breakdown</div><div class="explanation-text">{clean_text(data.get("explanation",""))}</div></div>'
 
-            st.markdown('<div class="section-title">📖 Explanation</div>', unsafe_allow_html=True)
-            st.write(clean_text(data.get("explanation")))
-
-            if data.get("articles"):
-                st.markdown('<div class="section-title">📜 Articles</div>', unsafe_allow_html=True)
-                for a in data.get("articles", []):
+            articles = data.get("articles", [])
+            if articles:
+                h += '<div class="section-block"><div class="section-label">📜 Constitutional Articles</div>'
+                for a in articles:
                     if isinstance(a, dict):
-                        st.write(f"- {clean_text(a.get('number'))}: {clean_text(a.get('title'))}")
-                    else:
-                        st.write(f"- {clean_text(a)}")
+                        h += f'<div class="article-item"><div class="article-num">{clean_text(a.get("number",""))}</div><div class="article-title">{clean_text(a.get("title",""))}</div><div class="article-relevance">↳ {clean_text(a.get("relevance",""))}</div></div>'
+                h += '</div>'
 
-            if data.get("laws"):
-                st.markdown('<div class="section-title">⚖️ Laws</div>', unsafe_allow_html=True)
-                for l in data.get("laws", []):
+            laws = data.get("laws", [])
+            if laws:
+                h += '<div class="section-block"><div class="section-label">⚖️ Relevant Laws</div>'
+                for l in laws:
                     if isinstance(l, dict):
-                        st.write(f"- {clean_text(l.get('name'))}")
-                    else:
-                        st.write(f"- {clean_text(l)}")
+                        h += f'<div class="law-item"><div class="law-name">{clean_text(l.get("name",""))}</div>{"<div class=law-section>" + clean_text(l.get("section","")) + "</div>" if l.get("section") else ""}<div class="law-rel">{clean_text(l.get("relevance",""))}</div></div>'
+                h += '</div>'
 
-            st.markdown('<div class="section-title">🧭 What you should do</div>', unsafe_allow_html=True)
-            for step in data.get("actionSteps", []):
-                st.write(f"- {clean_text(step)}")
+            steps = data.get("actionSteps", [])
+            if steps:
+                h += '<div class="section-block"><div class="section-label">🧭 What You Should Do</div>'
+                for i, step in enumerate(steps, 1):
+                    h += f'<div class="step-item"><span class="step-num">{i}</span><span>{clean_text(step)}</span></div>'
+                h += '</div>'
 
-# ---------- INPUT ----------
-user_input = st.chat_input("Describe your legal situation...")
+            loophole = data.get("loophole")
+            if loophole and loophole not in ("null", "None", None):
+                h += f'<div class="section-block"><div class="loophole-box"><div class="loophole-label">🔍 Legal Grey Area / Loophole</div>{clean_text(loophole)}</div></div>'
+
+            followup = data.get("followUp")
+            if followup:
+                h += f'<div class="followup-text">💬 {clean_text(followup)}</div>'
+
+            h += '</div></div>'
+            st.markdown(h, unsafe_allow_html=True)
+
+st.markdown('<div class="disclaimer">Educational purposes only · Not legal advice · NyayaAI</div>', unsafe_allow_html=True)
+
+# ── EXAMPLE DROPDOWN (above chat input) ──────────────────────────────────────
+examples = [
+    "— Select an example query —",
+    "Can police check my phone without a warrant?",
+    "My landlord is trying to evict me before my lease ends",
+    "My employer hasn't paid my salary for 2 months",
+    "Can I be fired for going on strike?",
+    "Someone posted defamatory content about me online",
+    "Police arrested me without showing a warrant — what are my rights?",
+    "My employer is forcing me to work overtime without pay",
+    "Can the government acquire my land without compensation?",
+    "I was denied bail — what can I do?",
+    "My business partner cheated me out of profits",
+    "Can I record a conversation as evidence in court?",
+    "My neighbour is encroaching on my property",
+    "I received a legal notice — what should I do?",
+]
+
+selected = st.selectbox("", examples, label_visibility="collapsed", key="example_select")
+
+user_input = st.chat_input("Describe your legal situation…")
+
+if selected != "— Select an example query —" and selected != st.session_state.get("last_example_used"):
+    st.session_state["last_example_used"] = selected
+    user_input = selected
 
 if "prefill" in st.session_state:
     user_input = st.session_state.pop("prefill")
 
 if user_input:
+    # Auto-title the chat from first user message
+    if st.session_state.get("chat_title") == "New Consultation":
+        st.session_state.chat_title = user_input[:40] + ("…" if len(user_input) > 40 else "")
 
     st.session_state.messages.append({"role": "user", "content": user_input})
     st.session_state.display.append({"role": "user", "content": user_input})
 
-    with st.spinner("Thinking like a lawyer..."):
+    with st.spinner("Thinking like a lawyer…"):
         response = chat_with_ai(st.session_state.messages)
 
-    if response.get("type") == "chat":
-        memory_text = response.get("message", "")
-    else:
-        memory_text = response.get("explanation", "")
-
+    memory_text = response.get("message", "") if response.get("type") == "chat" else response.get("explanation", "")
     st.session_state.messages.append({"role": "assistant", "content": memory_text})
     st.session_state.display.append({"role": "assistant", "content": response})
 
+    save_current_chat()
     st.rerun()
