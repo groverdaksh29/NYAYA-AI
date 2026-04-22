@@ -150,34 +150,36 @@ def is_draft_request(text: str) -> bool:
     return any(k in t for k in draft_keywords)
 
 def get_ai_response(messages: list) -> dict:
-    client = Groq(api_key=API_KEY)
-
-    last_user_msg = messages[-1]["content"]
-
-    if is_draft_request(last_user_msg):
-        mode_instruction = "The user wants a legal document drafted. Return a DRAFT type response with a complete, professional, ready-to-use document. Use proper legal language."
-    elif needs_legal_advice(last_user_msg):
-        mode_instruction = "The user needs legal advice. Return a FULL ANALYSIS response with loopholes, action steps, and legal backing. Be specific and bold."
-    else:
-        mode_instruction = """User is chatting. Stay in CHAT mode. 
-        Give a REAL response — not just a follow-up question. 
-        React to what they said, drop a relevant legal insight or honest take, then ask ONE sharp follow-up.
-        Sound like a lawyer having a real conversation — confident, direct, slightly witty.
-        Aim for 3-6 sentences. Never be vague or preachy."""
-
-    full_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + [
-        m for m in messages if m["role"] != "system"
-    ] + [{"role": "system", "content": mode_instruction}]
-
     try:
+        client = Groq(api_key=API_KEY)
+
+        last_user_msg = messages[-1]["content"]
+
+        if is_draft_request(last_user_msg):
+            mode_instruction = "The user wants a legal document drafted. Return a DRAFT type response with a complete, professional, ready-to-use document. Use proper legal language."
+        elif needs_legal_advice(last_user_msg):
+            mode_instruction = "The user needs legal advice. Return a FULL ANALYSIS response with loopholes, action steps, and legal backing. Be specific and bold."
+        else:
+            mode_instruction = """User is chatting. Stay in CHAT mode. 
+            Give a REAL response — not just a follow-up question. 
+            React to what they said, drop a relevant legal insight or honest take, then ask ONE sharp follow-up.
+            Sound like a lawyer having a real conversation — confident, direct, slightly witty.
+            Aim for 3-6 sentences. Never be vague or preachy."""
+
+        full_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + [
+            m for m in messages if m["role"] != "system"
+        ] + [{"role": "system", "content": mode_instruction}]
+
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=full_messages,
             temperature=0.6,
             max_tokens=2000,
         )
+
         raw = response.choices[0].message.content.strip()
         raw = raw.replace("```json", "").replace("```", "").strip()
+
         try:
             data = json.loads(raw)
             return clean_all_fields(data)
@@ -186,12 +188,13 @@ def get_ai_response(messages: list) -> dict:
 
     except Exception as e:
         err = str(e).lower()
-        if "rate_limit" in err or "429" in err:
+        if "rate_limit" in err or "429" in err or "tpd" in err or "tokens per day" in err:
             return {
                 "type": "chat",
-                "message": "Even the Supreme Court shuts down at 4:30. I'm momentarily overwhelmed with cases — the kind of backlog that would make any lawyer sweat. Give me 2-3 minutes, Don't settle, don't sign anything, and don't talk to the police until I'm back."
+                "message": "Even Supreme Court shuts down at 4:30 pm. I'm momentarily overwhelmed with cases — the kind of backlog that would make any lawyer sweat.  I'll be back in 2-3 minutes. Don't settle, don't sign anything, and don't talk to the police until I'm back."
             }
         return {
             "type": "chat",
-            "message": "Something went wrong on my end. Try again in a moment."
+            "message": "Even Supreme Court shuts down at 4:30 pm. I'm momentarily overwhelmed with cases — the kind of backlog that would make any lawyer sweat.  I'll be back in 2-3 minutes. Don't settle, don't sign anything, and don't talk to the police until I'm back."
         }
+
