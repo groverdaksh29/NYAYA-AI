@@ -1,6 +1,6 @@
 import streamlit as st
 from backend import get_ai_response, SYSTEM_PROMPT
-import re, html, json
+import re, html, json, io
 from datetime import datetime
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -56,6 +56,12 @@ def remove_chat(chat_id):
         del history[chat_id]
         store_all_chats(history)
 
+def get_total_consultations():
+    return st.session_state.get("total_consultations", 0)
+
+def increment_consultations():
+    st.session_state["total_consultations"] = get_total_consultations() + 1
+
 # ── Init session ──────────────────────────────────────────────────────────────
 if "chat_id" not in st.session_state:
     st.session_state.chat_id = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -67,6 +73,12 @@ if "messages" not in st.session_state:
 
 if "display" not in st.session_state:
     st.session_state.display = []
+
+if "total_consultations" not in st.session_state:
+    st.session_state.total_consultations = 0
+
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = "chat"
 
 if len(st.session_state.display) == 0:
     st.session_state.display.append({
@@ -97,13 +109,10 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
         radial-gradient(ellipse at 85% 85%, rgba(139,90,20,0.07) 0%, transparent 50%),
         radial-gradient(ellipse at 50% 50%, rgba(100,60,10,0.04) 0%, transparent 70%);
 }
-
-/* Ashoka Chakra watermark */
 .stApp::before {
     content: '☸';
     position: fixed;
-    top: 50%;
-    left: 50%;
+    top: 50%; left: 50%;
     transform: translate(-50%, -50%);
     font-size: 65vw;
     color: rgba(180,134,20,0.018);
@@ -119,7 +128,6 @@ section[data-testid="stSidebar"] {
     min-width: 280px !important;
     max-width: 280px !important;
 }
-
 .block-container {
     padding: 0 2rem 7rem !important;
     max-width: 100% !important;
@@ -130,11 +138,10 @@ section[data-testid="stSidebar"] {
 /* ── SIDEBAR ── */
 .sidebar-logo {
     text-align: center;
-    padding: 28px 16px 24px;
+    padding: 24px 16px 20px;
     border-bottom: 1px solid rgba(184,134,11,0.12);
     margin-bottom: 8px;
 }
-
 .sidebar-logo-title {
     font-family: 'Cormorant Garamond', serif;
     font-size: 1.7rem;
@@ -142,7 +149,6 @@ section[data-testid="stSidebar"] {
     color: #d4a017;
     letter-spacing: 2px;
 }
-
 .sidebar-logo-sub {
     font-size: 0.62rem;
     letter-spacing: 3px;
@@ -150,14 +156,11 @@ section[data-testid="stSidebar"] {
     color: rgba(255,255,255,0.2);
     margin-top: 4px;
 }
-
 .tricolor {
     display: flex;
-    width: 60px;
-    height: 2px;
+    width: 60px; height: 2px;
     margin: 10px auto 0;
-    border-radius: 2px;
-    overflow: hidden;
+    border-radius: 2px; overflow: hidden;
 }
 .tc-s { flex:1; background:#FF6B1A; }
 .tc-w { flex:1; background:#f5f0e8; }
@@ -168,41 +171,39 @@ section[data-testid="stSidebar"] {
     letter-spacing: 2.5px;
     text-transform: uppercase;
     color: rgba(184,134,11,0.5);
-    padding: 16px 16px 8px;
+    padding: 14px 16px 8px;
     font-weight: 600;
 }
 
-.history-item {
-    padding: 10px 16px;
-    cursor: pointer;
-    border-radius: 8px;
-    margin: 2px 8px;
-    transition: all 0.2s;
-    border: 1px solid transparent;
+/* ── CONSULTATION COUNTER ── */
+.consult-counter {
+    margin: 0 12px 12px;
+    padding: 10px 14px;
+    background: rgba(184,134,11,0.06);
+    border: 1px solid rgba(184,134,11,0.15);
+    border-radius: 10px;
+    text-align: center;
 }
-.history-item:hover {
-    background: rgba(184,134,11,0.07);
-    border-color: rgba(184,134,11,0.15);
+.counter-number {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #d4a017;
+    line-height: 1;
 }
-.history-item-title {
-    font-size: 0.83rem;
-    color: #c8b89a;
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.history-item-time {
-    font-size: 0.68rem;
-    color: rgba(255,255,255,0.2);
-    margin-top: 2px;
+.counter-label {
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.25);
+    margin-top: 3px;
 }
 
 .no-history {
     font-size: 0.8rem;
     color: rgba(255,255,255,0.15);
     text-align: center;
-    padding: 24px 16px;
+    padding: 20px 16px;
     font-style: italic;
 }
 
@@ -228,23 +229,19 @@ section[data-testid="stSidebar"] {
 /* ── MAIN HEADER ── */
 .nyaya-header {
     text-align: center;
-    padding: 8px 0 16px;
+    padding: 20px 0 14px;
     position: relative;
-    margin-bottom: 8px;
-    margin-top: -20px;
+    margin-bottom: 4px;
+    margin-top: 10px;
 }
-
 .nyaya-header::after {
     content: '';
     position: absolute;
-    bottom: 0;
-    left: 50%;
+    bottom: 0; left: 50%;
     transform: translateX(-50%);
-    width: 200px;
-    height: 1px;
+    width: 200px; height: 1px;
     background: linear-gradient(90deg, transparent, rgba(184,134,11,0.3), transparent);
 }
-
 .nyaya-title {
     font-family: 'Cormorant Garamond', serif;
     font-size: 5.5rem;
@@ -254,7 +251,6 @@ section[data-testid="stSidebar"] {
     text-shadow: 0 0 60px rgba(212,160,23,0.35), 0 2px 4px rgba(0,0,0,0.5);
     line-height: 1;
 }
-
 .nyaya-subtitle {
     font-size: 0.82rem;
     letter-spacing: 3px;
@@ -263,31 +259,134 @@ section[data-testid="stSidebar"] {
     margin-top: 10px;
     font-weight: 400;
 }
-
 .header-tricolor {
     display: flex;
-    width: 100px;
-    height: 2px;
+    width: 100px; height: 2px;
     margin: 12px auto 0;
-    border-radius: 2px;
-    overflow: hidden;
+    border-radius: 2px; overflow: hidden;
 }
-
-/* ── DECORATIVE ELEMENTS ── */
 .legal-ornament {
     text-align: center;
     font-size: 0.8rem;
     color: rgba(184,134,11,0.45);
     letter-spacing: 8px;
-    margin: 8px 0 20px;
+    margin: 8px 0 16px;
     font-family: 'Cormorant Garamond', serif;
+}
+
+/* ── TAB NAV ── */
+.tab-nav {
+    display: flex;
+    gap: 8px;
+    margin: 0 0 16px 0;
+    border-bottom: 1px solid rgba(184,134,11,0.1);
+    padding-bottom: 0;
+}
+.tab-btn {
+    padding: 8px 18px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    border: none;
+    background: transparent;
+    color: rgba(255,255,255,0.25);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.2s;
+    font-family: 'DM Sans', sans-serif;
+}
+.tab-btn.active {
+    color: #d4a017;
+    border-bottom-color: #d4a017;
+}
+.tab-btn:hover { color: rgba(212,160,23,0.7); }
+
+/* ── PDF UPLOAD ── */
+.upload-section {
+    border: 1px dashed rgba(184,134,11,0.25);
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin-bottom: 16px;
+    background: rgba(184,134,11,0.02);
+}
+.upload-label {
+    font-size: 0.68rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(184,134,11,0.55);
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+/* ── DRAFT SECTION ── */
+.draft-box {
+    background: rgba(138,43,226,0.04);
+    border: 1px solid rgba(138,43,226,0.15);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-top: 8px;
+}
+.draft-title {
+    font-size: 0.68rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(216,180,254,0.6);
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+.draft-content {
+    font-family: 'Courier New', monospace;
+    font-size: 0.82rem;
+    color: #d8b4fe;
+    line-height: 1.8;
+    white-space: pre-wrap;
+}
+
+/* ── LAWYER FINDER ── */
+.lawyer-finder {
+    background: rgba(47,133,90,0.04);
+    border: 1px solid rgba(47,133,90,0.15);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+}
+.lawyer-finder-title {
+    font-size: 0.68rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(104,211,145,0.6);
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+.lawyer-link {
+    display: block;
+    padding: 8px 12px;
+    margin-bottom: 6px;
+    background: rgba(47,133,90,0.06);
+    border: 1px solid rgba(47,133,90,0.12);
+    border-radius: 8px;
+    color: #68D391;
+    font-size: 0.82rem;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+.lawyer-link:hover {
+    background: rgba(47,133,90,0.12);
+    border-color: rgba(47,133,90,0.3);
+}
+.lawyer-link-label {
+    font-size: 0.68rem;
+    color: rgba(104,211,145,0.5);
+    margin-top: 2px;
 }
 
 /* ── CHAT MESSAGES ── */
 .user-bubble {
     display: flex;
     justify-content: flex-end;
-    margin: 12px 0;
+    margin: 10px 0;
 }
 .user-bubble-inner {
     background: linear-gradient(135deg, #1a1710, #12100a);
@@ -299,18 +398,15 @@ section[data-testid="stSidebar"] {
     font-size: 0.91rem;
     line-height: 1.65;
 }
-
 .bot-bubble {
     display: flex;
     justify-content: flex-start;
-    margin: 12px 0;
+    margin: 10px 0;
     gap: 10px;
     align-items: flex-start;
 }
-
 .bot-avatar {
-    width: 32px;
-    height: 32px;
+    width: 32px; height: 32px;
     background: linear-gradient(135deg, #b8860b, #8B6914);
     border-radius: 50%;
     display: flex;
@@ -321,7 +417,6 @@ section[data-testid="stSidebar"] {
     margin-top: 2px;
     box-shadow: 0 0 12px rgba(184,134,11,0.2);
 }
-
 .bot-bubble-inner {
     background: rgba(255,255,255,0.025);
     border: 1px solid rgba(255,255,255,0.055);
@@ -332,7 +427,7 @@ section[data-testid="stSidebar"] {
     color: #d4c9b0;
     font-size: 0.91rem;
     line-height: 1.7;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.3), inset 0 0 40px rgba(184,134,11,0.02);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
 }
 
 /* ── RISK BADGE ── */
@@ -352,7 +447,7 @@ section[data-testid="stSidebar"] {
 .risk-grey { background: rgba(214,158,46,0.13); border: 1px solid rgba(214,158,46,0.35); color: #F6E05E; }
 .risk-high { background: rgba(229,62,62,0.13);  border: 1px solid rgba(229,62,62,0.35);  color: #FC8181; }
 
-/* ── ANALYSIS ── */
+/* ── ANALYSIS BLOCKS ── */
 .section-block {
     margin-top: 14px;
     padding-top: 12px;
@@ -367,7 +462,6 @@ section[data-testid="stSidebar"] {
     font-weight: 600;
 }
 .explanation-text { color: #c8bda0; font-size: 0.91rem; line-height: 1.75; }
-
 .article-item {
     background: rgba(184,134,11,0.04);
     border-left: 2px solid rgba(184,134,11,0.35);
@@ -378,7 +472,6 @@ section[data-testid="stSidebar"] {
 .article-num { font-size: 0.67rem; font-weight: 700; color: #b8860b; letter-spacing: 1px; text-transform: uppercase; }
 .article-title { font-weight: 600; color: #e8dcc8; font-size: 0.87rem; margin: 2px 0; }
 .article-relevance { font-size: 0.81rem; color: rgba(200,189,160,0.65); font-style: italic; }
-
 .law-item {
     background: rgba(255,107,26,0.04);
     border-left: 2px solid rgba(255,107,26,0.28);
@@ -389,7 +482,6 @@ section[data-testid="stSidebar"] {
 .law-name { font-weight: 600; color: #e8dcc8; font-size: 0.87rem; }
 .law-section { font-size: 0.73rem; color: #FF8C42; margin: 2px 0; }
 .law-rel { font-size: 0.81rem; color: rgba(200,189,160,0.65); }
-
 .step-item {
     display: flex;
     gap: 11px;
@@ -408,7 +500,6 @@ section[data-testid="stSidebar"] {
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0; margin-top: 2px;
 }
-
 .loophole-box {
     background: rgba(138,43,226,0.06);
     border: 1px solid rgba(138,43,226,0.18);
@@ -429,22 +520,21 @@ section[data-testid="stSidebar"] {
     border-top: 1px solid rgba(184,134,11,0.1);
 }
 
-/* ── DIVIDER ── */
-.gold-divider {
-    border: none; height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(184,134,11,0.18), transparent);
-    margin: 16px 0;
+/* ── MISC ── */
+.disclaimer {
+    text-align: center; font-size: 0.68rem;
+    color: rgba(255,255,255,0.12); margin-top: 6px; letter-spacing: 0.5px;
 }
-
-/* ── DROPDOWN EXAMPLE ── */
+.stSpinner > div { border-top-color: #b8860b !important; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(184,134,11,0.2); border-radius: 4px; }
 .stSelectbox > div > div {
     background: rgba(255,255,255,0.03) !important;
     border: 1px solid rgba(184,134,11,0.2) !important;
     border-radius: 10px !important;
     color: #c8bda0 !important;
 }
-
-/* ── CHAT INPUT ── */
 .stChatInputContainer {
     background: rgba(7,6,8,0.97) !important;
     border-top: 1px solid rgba(184,134,11,0.12) !important;
@@ -463,20 +553,6 @@ section[data-testid="stSidebar"] {
     border-color: rgba(184,134,11,0.45) !important;
     box-shadow: 0 0 0 2px rgba(184,134,11,0.07) !important;
 }
-
-/* ── DISCLAIMER ── */
-.disclaimer {
-    text-align: center; font-size: 0.68rem;
-    color: rgba(255,255,255,0.12); margin-top: 6px; letter-spacing: 0.5px;
-}
-
-/* ── SPINNER ── */
-.stSpinner > div { border-top-color: #b8860b !important; }
-
-/* ── SCROLLBAR ── */
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(184,134,11,0.2); border-radius: 4px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -488,6 +564,15 @@ with st.sidebar:
         <div class="sidebar-logo-title">NyayaAI</div>
         <div class="sidebar-logo-sub">Legal Consultations</div>
         <div class="tricolor"><span class="tc-s"></span><span class="tc-w"></span><span class="tc-g"></span></div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Consultation Counter ──
+    total = get_total_consultations()
+    st.markdown(f"""
+    <div class="consult-counter">
+        <div class="counter-number">{total}</div>
+        <div class="counter-label">Consultations This Session</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -505,9 +590,7 @@ with st.sidebar:
     else:
         for chat_id, chat_data in sorted_history:
             title = chat_data.get("title", "Consultation")
-            timestamp = chat_data.get("timestamp", "")
             is_active = chat_id == st.session_state.get("chat_id")
-
             col_a, col_b = st.columns([5, 1])
             with col_a:
                 label = f"{'▶ ' if is_active else ''}{title[:28]}{'…' if len(title) > 28 else ''}"
@@ -522,12 +605,41 @@ with st.sidebar:
                     st.rerun()
 
     st.markdown("---")
+
+    # ── Lawyer Finder ──
+    st.markdown('<div class="sidebar-section-label">🔍 Find a Lawyer</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="lawyer-finder">
+        <div class="lawyer-finder-title">Connect with a real lawyer</div>
+        <a class="lawyer-link" href="https://lawrato.com" target="_blank">
+            ⚖ LawRato.com
+            <div class="lawyer-link-label">Free legal advice & consultation</div>
+        </a>
+        <a class="lawyer-link" href="https://vakil.in" target="_blank">
+            ⚖ Vakil.in
+            <div class="lawyer-link-label">Find verified lawyers near you</div>
+        </a>
+        <a class="lawyer-link" href="https://www.justdial.com/lawyers" target="_blank">
+            ⚖ JustDial — Lawyers
+            <div class="lawyer-link-label">Search by city & specialisation</div>
+        </a>
+        <a class="lawyer-link" href="https://districts.ecourts.gov.in" target="_blank">
+            ⚖ eCourts — District Courts
+            <div class="lawyer-link-label">Official government legal portal</div>
+        </a>
+    </div>
+    """, unsafe_allow_html=True)
+
     st.markdown('<div class="no-history" style="padding:8px 16px;">Educational purposes only.<br>Not legal advice.</div>', unsafe_allow_html=True)
 
-# ── MAIN AREA ─────────────────────────────────────────────────────────────────
+# ── MAIN HEADER ───────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="nyaya-header">
-    <div class="nyaya-title"><span style="vertical-align: 0.12em; font-size: 0.9em;">☸</span> &nbsp;NyayaAI&nbsp; <span style="vertical-align: 0.12em; font-size: 0.9em;">⚖</span></div>
+    <div class="nyaya-title">
+        <span style="vertical-align: 0.12em; font-size: 0.9em;">☸</span>
+        &nbsp;NyayaAI&nbsp;
+        <span style="vertical-align: 0.12em; font-size: 0.9em;">⚖</span>
+    </div>
     <div class="nyaya-subtitle">Indian Legal Reasoning & Rights Assistant</div>
     <div class="header-tricolor" style="display:flex;width:100px;height:2px;margin:12px auto 0;border-radius:2px;overflow:hidden;">
         <span style="flex:1;background:#FF6B1A;"></span>
@@ -537,6 +649,33 @@ st.markdown("""
 </div>
 <div class="legal-ornament">— SATYAMEVA JAYATE —</div>
 """, unsafe_allow_html=True)
+
+# ── PDF UPLOAD ────────────────────────────────────────────────────────────────
+st.markdown('<div class="upload-label" style="font-size:0.68rem;letter-spacing:2px;text-transform:uppercase;color:rgba(184,134,11,0.5);font-weight:600;margin-bottom:6px;">📄 Upload a Legal Document for Analysis</div>', unsafe_allow_html=True)
+uploaded_pdf = st.file_uploader("", type=["pdf"], label_visibility="collapsed", key="pdf_uploader")
+
+if uploaded_pdf is not None and uploaded_pdf.name != st.session_state.get("last_pdf_name"):
+    st.session_state["last_pdf_name"] = uploaded_pdf.name
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(io.BytesIO(uploaded_pdf.read()))
+        pdf_text = "\n".join(page.extract_text() or "" for page in reader.pages).strip()
+        if pdf_text:
+            prompt = f"I've uploaded a legal document titled '{uploaded_pdf.name}'. Please analyse it thoroughly — tell me what it means, what my rights and risks are, and what I should do.\n\nDocument content:\n{pdf_text[:4000]}"
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            st.session_state.display.append({"role": "user", "content": f"📄 Uploaded: {uploaded_pdf.name}"})
+            with st.spinner("Reading your document like a lawyer…"):
+                response = get_ai_response(st.session_state.messages)
+            memory_text = response.get("message", "") if response.get("type") == "chat" else response.get("explanation", "")
+            st.session_state.messages.append({"role": "assistant", "content": memory_text})
+            st.session_state.display.append({"role": "assistant", "content": response})
+            increment_consultations()
+            store_current_session()
+            st.rerun()
+        else:
+            st.warning("Couldn't extract text from this PDF. It may be a scanned image.")
+    except Exception as e:
+        st.error(f"Error reading PDF: {e}")
 
 # ── CHAT MESSAGES ─────────────────────────────────────────────────────────────
 for msg in st.session_state.display:
@@ -548,6 +687,8 @@ for msg in st.session_state.display:
         """, unsafe_allow_html=True)
     else:
         data = msg["content"]
+
+        # ── Chat message ──
         if data.get("type") == "chat":
             st.markdown(f"""
             <div class="bot-bubble">
@@ -555,6 +696,18 @@ for msg in st.session_state.display:
                 <div class="bot-bubble-inner">{remove_html_tags(data.get("message", ""))}</div>
             </div>
             """, unsafe_allow_html=True)
+
+        # ── Document draft ──
+        elif data.get("type") == "draft":
+            doc_title = remove_html_tags(data.get("documentTitle", "Legal Document"))
+            doc_content = remove_html_tags(data.get("content", ""))
+            h = '<div class="bot-bubble"><div class="bot-avatar">⚖</div><div class="bot-bubble-inner">'
+            h += f'<div class="section-label">📝 Document Draft — {doc_title}</div>'
+            h += f'<div class="draft-box"><div class="draft-content">{doc_content}</div></div>'
+            h += '</div></div>'
+            st.markdown(h, unsafe_allow_html=True)
+
+        # ── Full analysis ──
         else:
             risk = data.get("riskLevel", "grey")
             risk_emoji = {"low": "🟢", "grey": "🟡", "high": "🔴"}.get(risk, "⚪")
@@ -599,7 +752,7 @@ for msg in st.session_state.display:
 
 st.markdown('<div class="disclaimer">Educational purposes only · Not legal advice · NyayaAI</div>', unsafe_allow_html=True)
 
-# ── EXAMPLE DROPDOWN (above chat input) ──────────────────────────────────────
+# ── EXAMPLE DROPDOWN ──────────────────────────────────────────────────────────
 examples = [
     "— Select an example query —",
     "Can police check my phone without a warrant?",
@@ -615,11 +768,12 @@ examples = [
     "Can I record a conversation as evidence in court?",
     "My neighbour is encroaching on my property",
     "I received a legal notice — what should I do?",
+    "Draft a legal notice to my landlord for illegal eviction",
+    "Draft a complaint letter to the Labour Commissioner",
 ]
 
 selected = st.selectbox("", examples, label_visibility="collapsed", key="example_select")
-
-user_input = st.chat_input("Describe your legal situation…")
+user_input = st.chat_input("Describe your legal situation or ask me to draft a document…")
 
 if selected != "— Select an example query —" and selected != st.session_state.get("last_example_used"):
     st.session_state["last_example_used"] = selected
@@ -629,7 +783,6 @@ if "prefill" in st.session_state:
     user_input = st.session_state.pop("prefill")
 
 if user_input:
-    # Auto-title the chat from first user message
     if st.session_state.get("chat_title") == "New Consultation":
         st.session_state.chat_title = user_input[:40] + ("…" if len(user_input) > 40 else "")
 
@@ -639,9 +792,10 @@ if user_input:
     with st.spinner("Thinking like a lawyer…"):
         response = get_ai_response(st.session_state.messages)
 
-    memory_text = response.get("message", "") if response.get("type") == "chat" else response.get("explanation", "")
+    memory_text = response.get("message", "") if response.get("type") == "chat" else response.get("explanation", response.get("content", ""))
     st.session_state.messages.append({"role": "assistant", "content": memory_text})
     st.session_state.display.append({"role": "assistant", "content": response})
 
+    increment_consultations()
     store_current_session()
     st.rerun()
