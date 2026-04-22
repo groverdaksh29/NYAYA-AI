@@ -665,7 +665,13 @@ if uploaded_pdf is not None and uploaded_pdf.name != st.session_state.get("last_
             st.session_state.messages.append({"role": "user", "content": prompt})
             st.session_state.display.append({"role": "user", "content": f"📄 Uploaded: {uploaded_pdf.name}"})
             with st.spinner("Reading your document like a lawyer…"):
-                response = get_ai_response(st.session_state.messages)
+                try:
+                    response = get_ai_response(st.session_state.messages)
+                except Exception:
+                    response = {
+                        "type": "chat",
+                        "message": "Too many Indians in legal trouble at once — which honestly says a lot about the system. I'll be back in 2-3 minutes. Don't settle, don't sign anything, and don't talk to the police until I'm back."
+                    }
             memory_text = response.get("message", "") if response.get("type") == "chat" else response.get("explanation", "")
             st.session_state.messages.append({"role": "assistant", "content": memory_text})
             st.session_state.display.append({"role": "assistant", "content": response})
@@ -790,7 +796,13 @@ if user_input:
     st.session_state.display.append({"role": "user", "content": user_input})
 
     with st.spinner("Thinking like a lawyer…"):
-        response = get_ai_response(st.session_state.messages)
+        try:
+            response = get_ai_response(st.session_state.messages)
+        except Exception:
+            response = {
+                "type": "chat",
+                "message": "Even Supreme Court shuts down at 4:30 pm. I'm momentarily overwhelmed with cases — the kind of backlog that would make any lawyer sweat.  I'll be back in 2-3 minutes. Don't settle, don't sign anything, and don't talk to the police until I'm back."
+            }
 
     memory_text = response.get("message", "") if response.get("type") == "chat" else response.get("explanation", response.get("content", ""))
     st.session_state.messages.append({"role": "assistant", "content": memory_text})
