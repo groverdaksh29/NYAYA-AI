@@ -92,22 +92,22 @@ For legal analysis and advice:
 }
 """
 
-def clean_text(text):
+def strip_html(text):
     if not text:
         return ""
     text = re.sub(r"<.*?>", "", str(text))
     return text.strip()
 
-def deep_clean(obj):
+def clean_all_fields(obj):
     if isinstance(obj, dict):
-        return {k: deep_clean(v) for k, v in obj.items()}
+        return {k: clean_all_fields(v) for k, v in obj.items()}
     elif isinstance(obj, list):
-        return [deep_clean(i) for i in obj]
+        return [clean_all_fields(i) for i in obj]
     elif isinstance(obj, str):
-        return clean_text(obj)
+        return strip_html(obj)
     return obj
 
-def is_advice_query(text: str) -> bool:
+def needs_legal_advice(text: str) -> bool:
     t = text.lower()
     strong = [
         "what should i do", "what to do", "help me", "need advice",
@@ -123,12 +123,12 @@ def is_advice_query(text: str) -> bool:
         return True
     return False
 
-def chat_with_ai(messages: list) -> dict:
+def get_ai_response(messages: list) -> dict:
     client = Groq(api_key=API_KEY)
 
     last_user_msg = messages[-1]["content"]
 
-    if is_advice_query(last_user_msg):
+    if needs_legal_advice(last_user_msg):
         mode_instruction = "The user needs legal advice. Return a FULL ANALYSIS response with loopholes, action steps, and legal backing. Be specific and bold."
     else:
         mode_instruction = "User is chatting. Stay in CHAT mode. Ask a clarifying question or respond conversationally. Keep it short and sharp."
@@ -149,9 +149,9 @@ def chat_with_ai(messages: list) -> dict:
 
     try:
         data = json.loads(raw)
-        return deep_clean(data)
+        return clean_all_fields(data)
     except:
         return {
             "type": "chat",
-            "message": clean_text(raw)
+            "message": strip_html(raw)
         }
