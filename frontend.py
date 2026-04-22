@@ -1,6 +1,6 @@
 import streamlit as st
 from backend import chat_with_ai, SYSTEM_PROMPT
-import re, html, json, os
+import re, html, json
 from datetime import datetime
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -11,17 +11,11 @@ def clean_text(text):
     text = html.unescape(text)
     return text.strip()
 
-HISTORY_FILE = "chat_history.json"
-
 def load_history():
-    if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, "r") as f:
-            return json.load(f)
-    return {}
+    return st.session_state.get("history", {})
 
 def save_history(history):
-    with open(HISTORY_FILE, "w") as f:
-        json.dump(history, f, indent=2)
+    st.session_state["history"] = history
 
 def save_current_chat():
     if not st.session_state.display or len(st.session_state.display) <= 1:
@@ -252,20 +246,21 @@ section[data-testid="stSidebar"] {
 
 .nyaya-title {
     font-family: 'Cormorant Garamond', serif;
-    font-size: 2.6rem;
+    font-size: 4rem;
     font-weight: 700;
     color: #d4a017;
-    letter-spacing: 3px;
-    text-shadow: 0 0 40px rgba(212,160,23,0.25);
+    letter-spacing: 4px;
+    text-shadow: 0 0 60px rgba(212,160,23,0.35), 0 2px 4px rgba(0,0,0,0.5);
     line-height: 1;
 }
 
 .nyaya-subtitle {
-    font-size: 0.68rem;
-    letter-spacing: 4px;
+    font-size: 0.82rem;
+    letter-spacing: 3px;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.22);
-    margin-top: 7px;
+    color: rgba(255,255,255,0.4);
+    margin-top: 10px;
+    font-weight: 400;
 }
 
 .header-tricolor {
@@ -280,10 +275,10 @@ section[data-testid="stSidebar"] {
 /* ── DECORATIVE ELEMENTS ── */
 .legal-ornament {
     text-align: center;
-    font-size: 0.75rem;
-    color: rgba(184,134,11,0.2);
+    font-size: 0.8rem;
+    color: rgba(184,134,11,0.45);
     letter-spacing: 8px;
-    margin: 4px 0 16px;
+    margin: 8px 0 20px;
     font-family: 'Cormorant Garamond', serif;
 }
 
