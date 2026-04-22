@@ -15,9 +15,16 @@ Open Terminal / Command Prompt in this folder and run:
 pip install -r requirements.txt
 ```
 
-### Step 3 — Run the app
+### Step 3 — Add your Groq API key
+Create a `.env` file in the project folder and add:
 ```
-streamlit run app.py
+GROQ_API_KEY=your_actual_key_here
+```
+Get a free key at https://console.groq.com
+
+### Step 4 — Run the app
+```
+streamlit run frontend.py
 ```
 The app will open automatically in your browser at http://localhost:8501
 
@@ -27,22 +34,22 @@ The app will open automatically in your browser at http://localhost:8501
 
 1. Create a free account at https://github.com and upload this folder as a repository
 2. Go to https://streamlit.io/cloud → Sign in with GitHub
-3. Click "New app" → Select your repository → Set main file as `app.py`
-4. Click Deploy — your app goes live in ~2 minutes!
-
----
-
-## 🔑 API Key
-- Get a free Anthropic API key at https://console.anthropic.com/keys
-- Enter it in the app's API Key field (it stays in your browser session only)
+3. Click "New app" → Select your repository → Set main file as `frontend.py`
+4. Before deploying, click "Advanced settings" → add your secret:
+   ```
+   GROQ_API_KEY = "your_actual_key_here"
+   ```
+5. Click Deploy — your app goes live in ~2 minutes!
 
 ---
 
 ## 📁 Project Files
 | File | Purpose |
 |------|---------|
-| `app.py` | Main Streamlit application |
+| `frontend.py` | Main Streamlit application (UI) |
+| `backend.py` | AI logic and Groq API integration |
 | `requirements.txt` | Python dependencies |
+| `.env` | Your local API key (do NOT upload to GitHub) |
 
 ---
 
