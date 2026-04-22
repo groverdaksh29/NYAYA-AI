@@ -1,26 +1,26 @@
 import streamlit as st
-from backend import chat_with_ai, SYSTEM_PROMPT
+from backend import get_ai_response, SYSTEM_PROMPT
 import re, html, json
 from datetime import datetime
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def clean_text(text):
+def remove_html_tags(text):
     if not text:
         return ""
     text = re.sub(r"<.*?>", "", str(text))
     text = html.unescape(text)
     return text.strip()
 
-def load_history():
+def get_all_chats():
     return st.session_state.get("history", {})
 
-def save_history(history):
+def store_all_chats(history):
     st.session_state["history"] = history
 
-def save_current_chat():
+def store_current_session():
     if not st.session_state.display or len(st.session_state.display) <= 1:
         return
-    history = load_history()
+    history = get_all_chats()
     chat_id = st.session_state.get("chat_id")
     title = st.session_state.get("chat_title", "Untitled")
     history[chat_id] = {
@@ -29,19 +29,19 @@ def save_current_chat():
         "messages": st.session_state.messages,
         "display": st.session_state.display,
     }
-    save_history(history)
+    store_all_chats(history)
 
-def start_new_chat():
-    save_current_chat()
+def begin_new_session():
+    store_current_session()
     st.session_state.chat_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     st.session_state.chat_timestamp = datetime.now().strftime("%d %b %Y, %I:%M %p")
     st.session_state.chat_title = "New Consultation"
     st.session_state.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     st.session_state.display = []
 
-def load_chat(chat_id):
-    save_current_chat()
-    history = load_history()
+def open_old_chat(chat_id):
+    store_current_session()
+    history = get_all_chats()
     if chat_id in history:
         chat = history[chat_id]
         st.session_state.chat_id = chat_id
@@ -50,11 +50,11 @@ def load_chat(chat_id):
         st.session_state.messages = chat.get("messages", [{"role": "system", "content": SYSTEM_PROMPT}])
         st.session_state.display = chat.get("display", [])
 
-def delete_chat(chat_id):
-    history = load_history()
+def remove_chat(chat_id):
+    history = get_all_chats()
     if chat_id in history:
         del history[chat_id]
-        save_history(history)
+        store_all_chats(history)
 
 # ── Init session ──────────────────────────────────────────────────────────────
 if "chat_id" not in st.session_state:
@@ -228,9 +228,10 @@ section[data-testid="stSidebar"] {
 /* ── MAIN HEADER ── */
 .nyaya-header {
     text-align: center;
-    padding: 32px 0 24px;
+    padding: 8px 0 16px;
     position: relative;
     margin-bottom: 8px;
+    margin-top: -20px;
 }
 
 .nyaya-header::after {
@@ -246,7 +247,7 @@ section[data-testid="stSidebar"] {
 
 .nyaya-title {
     font-family: 'Cormorant Garamond', serif;
-    font-size: 4rem;
+    font-size: 5.5rem;
     font-weight: 700;
     color: #d4a017;
     letter-spacing: 4px;
@@ -491,12 +492,12 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     if st.button("＋  New Consultation", key="new_chat"):
-        start_new_chat()
+        begin_new_session()
         st.rerun()
 
     st.markdown('<div class="sidebar-section-label">Recent Consultations</div>', unsafe_allow_html=True)
 
-    history = load_history()
+    history = get_all_chats()
     sorted_history = sorted(history.items(), key=lambda x: x[1].get("timestamp", ""), reverse=True)
 
     if not sorted_history:
@@ -511,13 +512,13 @@ with st.sidebar:
             with col_a:
                 label = f"{'▶ ' if is_active else ''}{title[:28]}{'…' if len(title) > 28 else ''}"
                 if st.button(label, key=f"load_{chat_id}"):
-                    load_chat(chat_id)
+                    open_old_chat(chat_id)
                     st.rerun()
             with col_b:
                 if st.button("✕", key=f"del_{chat_id}"):
-                    delete_chat(chat_id)
+                    remove_chat(chat_id)
                     if chat_id == st.session_state.get("chat_id"):
-                        start_new_chat()
+                        begin_new_session()
                     st.rerun()
 
     st.markdown("---")
@@ -526,7 +527,7 @@ with st.sidebar:
 # ── MAIN AREA ─────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="nyaya-header">
-    <div class="nyaya-title">⚖ NyayaAI</div>
+    <div class="nyaya-title"><span style="vertical-align: 0.12em; font-size: 0.9em;">☸</span> &nbsp;NyayaAI&nbsp; <span style="vertical-align: 0.12em; font-size: 0.9em;">⚖</span></div>
     <div class="nyaya-subtitle">Indian Legal Reasoning & Rights Assistant</div>
     <div class="header-tricolor" style="display:flex;width:100px;height:2px;margin:12px auto 0;border-radius:2px;overflow:hidden;">
         <span style="flex:1;background:#FF6B1A;"></span>
@@ -542,7 +543,7 @@ for msg in st.session_state.display:
     if msg["role"] == "user":
         st.markdown(f"""
         <div class="user-bubble">
-            <div class="user-bubble-inner">{clean_text(msg["content"])}</div>
+            <div class="user-bubble-inner">{remove_html_tags(msg["content"])}</div>
         </div>
         """, unsafe_allow_html=True)
     else:
@@ -551,23 +552,23 @@ for msg in st.session_state.display:
             st.markdown(f"""
             <div class="bot-bubble">
                 <div class="bot-avatar">⚖</div>
-                <div class="bot-bubble-inner">{clean_text(data.get("message", ""))}</div>
+                <div class="bot-bubble-inner">{remove_html_tags(data.get("message", ""))}</div>
             </div>
             """, unsafe_allow_html=True)
         else:
             risk = data.get("riskLevel", "grey")
             risk_emoji = {"low": "🟢", "grey": "🟡", "high": "🔴"}.get(risk, "⚪")
             h = '<div class="bot-bubble"><div class="bot-avatar">⚖</div><div class="bot-bubble-inner">'
-            h += f'<div class="risk-badge risk-{risk}">{risk_emoji} {clean_text(data.get("riskTitle",""))}</div>'
-            h += f'<div class="explanation-text">{clean_text(data.get("riskExplanation",""))}</div>'
-            h += f'<div class="section-block"><div class="section-label">📖 Legal Breakdown</div><div class="explanation-text">{clean_text(data.get("explanation",""))}</div></div>'
+            h += f'<div class="risk-badge risk-{risk}">{risk_emoji} {remove_html_tags(data.get("riskTitle",""))}</div>'
+            h += f'<div class="explanation-text">{remove_html_tags(data.get("riskExplanation",""))}</div>'
+            h += f'<div class="section-block"><div class="section-label">📖 Legal Breakdown</div><div class="explanation-text">{remove_html_tags(data.get("explanation",""))}</div></div>'
 
             articles = data.get("articles", [])
             if articles:
                 h += '<div class="section-block"><div class="section-label">📜 Constitutional Articles</div>'
                 for a in articles:
                     if isinstance(a, dict):
-                        h += f'<div class="article-item"><div class="article-num">{clean_text(a.get("number",""))}</div><div class="article-title">{clean_text(a.get("title",""))}</div><div class="article-relevance">↳ {clean_text(a.get("relevance",""))}</div></div>'
+                        h += f'<div class="article-item"><div class="article-num">{remove_html_tags(a.get("number",""))}</div><div class="article-title">{remove_html_tags(a.get("title",""))}</div><div class="article-relevance">↳ {remove_html_tags(a.get("relevance",""))}</div></div>'
                 h += '</div>'
 
             laws = data.get("laws", [])
@@ -575,23 +576,23 @@ for msg in st.session_state.display:
                 h += '<div class="section-block"><div class="section-label">⚖️ Relevant Laws</div>'
                 for l in laws:
                     if isinstance(l, dict):
-                        h += f'<div class="law-item"><div class="law-name">{clean_text(l.get("name",""))}</div>{"<div class=law-section>" + clean_text(l.get("section","")) + "</div>" if l.get("section") else ""}<div class="law-rel">{clean_text(l.get("relevance",""))}</div></div>'
+                        h += f'<div class="law-item"><div class="law-name">{remove_html_tags(l.get("name",""))}</div>{"<div class=law-section>" + remove_html_tags(l.get("section","")) + "</div>" if l.get("section") else ""}<div class="law-rel">{remove_html_tags(l.get("relevance",""))}</div></div>'
                 h += '</div>'
 
             steps = data.get("actionSteps", [])
             if steps:
                 h += '<div class="section-block"><div class="section-label">🧭 What You Should Do</div>'
                 for i, step in enumerate(steps, 1):
-                    h += f'<div class="step-item"><span class="step-num">{i}</span><span>{clean_text(step)}</span></div>'
+                    h += f'<div class="step-item"><span class="step-num">{i}</span><span>{remove_html_tags(step)}</span></div>'
                 h += '</div>'
 
             loophole = data.get("loophole")
             if loophole and loophole not in ("null", "None", None):
-                h += f'<div class="section-block"><div class="loophole-box"><div class="loophole-label">🔍 Legal Grey Area / Loophole</div>{clean_text(loophole)}</div></div>'
+                h += f'<div class="section-block"><div class="loophole-box"><div class="loophole-label">🔍 Legal Grey Area / Loophole</div>{remove_html_tags(loophole)}</div></div>'
 
             followup = data.get("followUp")
             if followup:
-                h += f'<div class="followup-text">💬 {clean_text(followup)}</div>'
+                h += f'<div class="followup-text">💬 {remove_html_tags(followup)}</div>'
 
             h += '</div></div>'
             st.markdown(h, unsafe_allow_html=True)
@@ -636,11 +637,11 @@ if user_input:
     st.session_state.display.append({"role": "user", "content": user_input})
 
     with st.spinner("Thinking like a lawyer…"):
-        response = chat_with_ai(st.session_state.messages)
+        response = get_ai_response(st.session_state.messages)
 
     memory_text = response.get("message", "") if response.get("type") == "chat" else response.get("explanation", "")
     st.session_state.messages.append({"role": "assistant", "content": memory_text})
     st.session_state.display.append({"role": "assistant", "content": response})
 
-    save_current_chat()
+    store_current_session()
     st.rerun()
