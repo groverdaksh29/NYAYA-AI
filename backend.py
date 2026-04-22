@@ -169,21 +169,29 @@ def get_ai_response(messages: list) -> dict:
         m for m in messages if m["role"] != "system"
     ] + [{"role": "system", "content": mode_instruction}]
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=full_messages,
-        temperature=0.6,
-        max_tokens=2000,
-    )
-
-    raw = response.choices[0].message.content.strip()
-    raw = raw.replace("```json", "").replace("```", "").strip()
-
     try:
-        data = json.loads(raw)
-        return clean_all_fields(data)
-    except:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=full_messages,
+            temperature=0.6,
+            max_tokens=2000,
+        )
+        raw = response.choices[0].message.content.strip()
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        try:
+            data = json.loads(raw)
+            return clean_all_fields(data)
+        except:
+            return {"type": "chat", "message": strip_html(raw)}
+
+    except Exception as e:
+        err = str(e).lower()
+        if "rate_limit" in err or "429" in err:
+            return {
+                "type": "chat",
+                "message": "Even the Supreme Court shuts down at 4:30. I'm momentarily overwhelmed with cases — the kind of backlog that would make any lawyer sweat. Give me 2-3 minutes, Don't settle, don't sign anything, and don't talk to the police until I'm back."
+            }
         return {
             "type": "chat",
-            "message": strip_html(raw)
+            "message": "Something went wrong on my end. Try again in a moment."
         }
